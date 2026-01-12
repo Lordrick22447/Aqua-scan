@@ -1,0 +1,52 @@
+pluginManagement {
+    def flutterSdkPath = {
+        def properties = new Properties()
+        file("local.properties").withInputStream { properties.load(it) }
+        def flutterSdkPath = properties.getProperty("flutter.sdk")
+        assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
+        return flutterSdkPath
+    }()
+
+    includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+    id "com.android.application" version "8.6.0" apply false
+    id "org.jetbrains.kotlin.android" version "2.1.0" apply false
+}
+
+include ":app"
+
+// Patch to fix namespace for ar_flutter_plugin without editing cache
+gradle.lifecycle.beforeProject { project ->
+    if (project.name == "ar_flutter_plugin") {
+        // Patch AndroidManifest.xml to remove package attribute (forbidden in AGP 8.x)
+        def manifestFile = new File(project.projectDir, "src/main/AndroidManifest.xml")
+        if (manifestFile.exists()) {
+            def content = manifestFile.text
+            if (content.contains('package="io.carius.lars.ar_flutter_plugin"')) {
+                // Remove the package attribute
+                def newContent = content.replaceAll('package="io.carius.lars.ar_flutter_plugin"', '')
+                manifestFile.write(newContent)
+                println "Patched AndroidManifest.xml for ${project.name}: removed package attribute"
+            }
+        }
+
+        project.afterEvaluate {
+            if (project.extensions.findByName("android") != null) {
+                def android = project.extensions.findByName("android")
+                if (!android.hasProperty("namespace") || android.namespace == null) {
+                   android.namespace = "io.carius.lars.ar_flutter_plugin"
+                   println "Patched namespace for ${project.name}"
+                }
+            }
+        }
+    }
+}
